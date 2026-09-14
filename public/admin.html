@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>控制台 · agent-session-proxy</title>
+<link rel="stylesheet" href="./style.css">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><text y='26' font-size='26'>🎛</text></svg>">
+</head>
+<body class="admin-body">
+
+<!-- ───────────────────────────── admin gate ───────────────────────────── -->
+<div id="gate" class="gate hidden">
+  <form id="gateForm" class="gate-card">
+    <div class="gate-mark">🎛</div>
+    <h1>控制台</h1>
+    <p class="muted">
+      管理口令与分享口令是两个不同的东西。管理口令只在启动服务的终端里打印过，
+      小伙伴手上的分享口令进不来这里。
+    </p>
+    <input id="gateToken" type="password" autocomplete="current-password" placeholder="管理口令（admin token）" required>
+    <div id="gateError" class="error-text hidden"></div>
+    <button type="submit" class="btn btn-primary btn-block">进入控制台</button>
+    <p class="small muted">忘记了？看启动服务那个终端窗口里的 <code>console :</code> 那一行。</p>
+  </form>
+</div>
+
+<!-- ───────────────────────────── console ───────────────────────────── -->
+<div id="app" class="admin-shell hidden">
+
+  <header class="admin-top">
+    <div class="admin-brand">
+      <span class="admin-mark">🎛</span>
+      <div>
+        <div class="admin-title">agent-session-proxy 控制台</div>
+        <div class="small muted" id="hostLine">—</div>
+      </div>
+    </div>
+    <div class="admin-top-right">
+      <span class="small muted" id="pollState">连接中…</span>
+      <a class="btn btn-sm" href="./index.html" target="_blank" rel="noopener">打开聊天页</a>
+      <button id="logoutBtn" class="btn btn-sm btn-ghost" type="button">退出控制台</button>
+    </div>
+  </header>
+
+  <div class="admin-note">
+    🔒 这个页面只显示「谁连进来了、用的哪个模型」，<b>不显示任何一句对话内容</b>。
+  </div>
+
+  <main class="admin-main">
+
+    <!-- 共享开关 -->
+    <section class="card switch-card">
+      <div class="switch-left">
+        <div class="switch-label">对外共享</div>
+        <div id="shareState" class="switch-state">—</div>
+        <div id="shareHint" class="small muted">—</div>
+      </div>
+      <button id="shareToggle" class="btn btn-primary btn-lg" type="button" disabled>—</button>
+    </section>
+
+    <!-- 数字卡片 -->
+    <section class="stat-row">
+      <div class="card stat">
+        <div class="stat-num" id="statViewers">–</div>
+        <div class="stat-label">正在连入的小伙伴</div>
+      </div>
+      <div class="card stat">
+        <div class="stat-num" id="statDevices">–</div>
+        <div class="stat-label">独立设备（按 IP）</div>
+      </div>
+      <div class="card stat">
+        <div class="stat-num" id="statSessions">–</div>
+        <div class="stat-label">会话数 / 上限</div>
+      </div>
+      <div class="card stat">
+        <div class="stat-num" id="statUptime">–</div>
+        <div class="stat-label">已运行</div>
+      </div>
+    </section>
+
+    <!-- 分享方式 -->
+    <section class="card">
+      <h2 class="card-title">把这个发给小伙伴</h2>
+      <div class="kv">
+        <label>一键链接</label>
+        <div class="copy-row">
+          <input id="shareUrl" class="mono" readonly value="">
+          <button class="btn btn-sm" type="button" data-copy="shareUrl">复制</button>
+        </div>
+      </div>
+      <div class="kv">
+        <label>网址（自己输口令）</label>
+        <div class="copy-row">
+          <input id="plainUrl" class="mono" readonly value="">
+          <button class="btn btn-sm" type="button" data-copy="plainUrl">复制</button>
+        </div>
+      </div>
+      <div class="kv">
+        <label>分享口令</label>
+        <div class="copy-row">
+          <input id="shareToken" class="mono" type="password" readonly value="">
+          <button id="tokenReveal" class="btn btn-sm" type="button">显示</button>
+          <button class="btn btn-sm" type="button" data-copy="shareToken">复制</button>
+        </div>
+      </div>
+      <div class="kv">
+        <label>监听地址</label>
+        <div id="listenLine" class="mono small">—</div>
+      </div>
+      <div class="kv">
+        <label>其他可用网址</label>
+        <div id="lanList" class="mono small muted">—</div>
+      </div>
+    </section>
+
+    <!-- 在线的人 -->
+    <section class="card">
+      <h2 class="card-title">
+        此刻连入的小伙伴
+        <span class="small muted">（只有连接信息，没有聊天内容）</span>
+      </h2>
+      <div class="table-wrap">
+        <table class="admin-table">
+          <thead>
+            <tr>
+              <th>设备</th><th>来源 IP</th><th>在看的会话</th><th>后端 / 模型</th><th>已连入</th><th></th>
+            </tr>
+          </thead>
+          <tbody id="viewerRows"></tbody>
+        </table>
+      </div>
+      <div id="viewerEmpty" class="empty-line muted hidden">还没有人连进来。</div>
+    </section>
+
+    <!-- 会话 -->
+    <section class="card">
+      <h2 class="card-title">
+        会话
+        <span class="small muted">（名字、模型、轮数；内容不在这里）</span>
+      </h2>
+      <div class="table-wrap">
+        <table class="admin-table">
+          <thead>
+            <tr>
+              <th>名称</th><th>后端 / 模型</th><th>状态</th><th>轮数</th><th>工作目录</th><th>最近活跃</th>
+            </tr>
+          </thead>
+          <tbody id="sessionRows"></tbody>
+        </table>
+      </div>
+      <div id="sessionEmpty" class="empty-line muted hidden">还没有会话。</div>
+    </section>
+
+    <!-- 机器信息 -->
+    <section class="card">
+      <h2 class="card-title">这台机器</h2>
+      <div class="kv"><label>CLI 状态</label><div id="providerLines" class="small">—</div></div>
+      <div class="kv"><label>共享工作目录</label><div id="workspaceLine" class="mono small">—</div></div>
+      <div class="kv"><label>运行环境</label><div id="platformLine" class="small muted">—</div></div>
+    </section>
+
+    <!-- 危险操作 -->
+    <section class="card danger-card">
+      <h2 class="card-title">关掉服务</h2>
+      <p class="small muted">
+        「暂停共享」是可逆的：小伙伴进不来，但会话都留着，随时可以再打开。<br>
+        「彻底关闭进程」会把这个网页自己也一起关掉 —— 之后要重开，得回到那台机器的终端里跑
+        <code>./start.sh</code>。
+      </p>
+      <div class="danger-row">
+        <button id="shutdownBtn" class="btn btn-danger" type="button">彻底关闭进程</button>
+        <span id="shutdownHint" class="small muted"></span>
+      </div>
+    </section>
+
+  </main>
+</div>
+
+<div id="toast" class="toast hidden"></div>
+
+<script src="./admin.js"></script>
+</body>
+</html>

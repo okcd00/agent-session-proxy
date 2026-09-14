@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>agent-session-proxy</title>
+<link rel="stylesheet" href="./style.css">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><text y='26' font-size='26'>🛰</text></svg>">
+</head>
+<body>
+
+<!-- ─────────────────────────── passphrase gate ─────────────────────────── -->
+<div id="gate" class="gate hidden">
+  <form id="gateForm" class="gate-card">
+    <div class="gate-mark">🛰</div>
+    <h1>agent-session-proxy</h1>
+    <p class="muted">这台机器上的 qodercli 已共享到局域网。输入访问口令继续。</p>
+    <input id="gateToken" type="password" autocomplete="current-password" placeholder="访问口令" required>
+    <div id="gateError" class="error-text hidden"></div>
+    <button type="submit" class="btn btn-primary btn-block">进入</button>
+  </form>
+</div>
+
+<!-- ───────────────────────────────── app ───────────────────────────────── -->
+<div id="app" class="app hidden">
+
+  <header class="topbar">
+    <button id="sidebarToggle" class="btn btn-ghost icon-only" title="会话列表">☰</button>
+    <div class="brand">
+      <span class="brand-mark">🛰</span>
+      <span class="brand-name">agent-session-proxy</span>
+    </div>
+    <div id="sessionBadge" class="session-badge"></div>
+    <div class="topbar-spacer"></div>
+    <div id="serverBadge" class="server-badge" title="服务状态">…</div>
+    <button id="settingsBtn" class="btn btn-ghost" title="默认设置">⚙ 设置</button>
+  </header>
+
+  <div class="body">
+
+    <aside id="sidebar" class="sidebar">
+      <div class="sidebar-head">
+        <span>会话</span>
+        <button id="newSessionBtn" class="btn btn-primary btn-sm">+ 新建</button>
+      </div>
+      <ul id="sessionList" class="session-list"></ul>
+      <div class="sidebar-foot">
+        <div id="shareRow" class="share-row"></div>
+      </div>
+    </aside>
+
+    <main class="chat">
+      <div id="empty" class="empty">
+        <div class="empty-mark">🛰</div>
+        <h2>还没有会话</h2>
+        <p class="muted">新建一个会话，选择模型和工作目录，然后开始对话。<br>
+          会话链接可以分享给局域网里的其他人，他们能看到同一个对话并接着聊。</p>
+        <button id="emptyNewBtn" class="btn btn-primary">+ 新建会话</button>
+      </div>
+
+      <div id="transcriptWrap" class="transcript-wrap hidden">
+        <div id="transcript" class="transcript">
+          <div class="transcript-inner">
+            <div id="transcriptItems"></div>
+            <div id="live" class="live hidden"></div>
+            <div id="notice" class="notice hidden"></div>
+          </div>
+        </div>
+      </div>
+
+      <div id="composer" class="composer hidden">
+        <div id="permissionBar" class="permission-bar hidden"></div>
+        <div id="attachTray" class="attach-tray hidden"></div>
+        <div class="composer-row">
+          <textarea id="input" rows="1" placeholder="发消息给 qoder…（Enter 发送 / Shift+Enter 换行，可粘贴或拖入图片）"></textarea>
+          <div class="composer-actions">
+            <button id="attachBtn" class="btn btn-ghost icon-only" title="上传文件 / 图片">📎</button>
+            <button id="sendBtn" class="btn btn-primary" title="发送">发送</button>
+            <button id="stopBtn" class="btn btn-danger hidden" title="中断当前回合">停止</button>
+          </div>
+        </div>
+        <input type="file" id="fileInput" class="hidden" multiple>
+        <div class="composer-foot">
+          <span id="composerMeta" class="muted"></span>
+          <span class="composer-foot-right">
+            <button id="resumeBtn" class="btn btn-ghost btn-sm hidden">▶ 恢复进程</button>
+            <button id="logsBtn" class="btn btn-ghost btn-sm">日志</button>
+          </span>
+        </div>
+      </div>
+      <div id="dropHint" class="drop-hint hidden">松手即可添加到附件</div>
+    </main>
+  </div>
+</div>
+
+<!-- ─────────────────────────── new session dialog ─────────────────────────── -->
+<div id="newSessionModal" class="modal hidden">
+  <form id="newSessionForm" class="modal-card">
+    <h2>新建会话</h2>
+    <p class="muted small">这些设置只作用于新会话，会在本机启动一个独立的 qodercli 进程。</p>
+
+    <label class="field">
+      <span>会话名称</span>
+      <input name="name" type="text" placeholder="例如：重构登录模块">
+    </label>
+
+    <label class="field">
+      <span>后端</span>
+      <select name="provider"></select>
+      <span id="providerHint" class="hint" data-hint="provider"></span>
+    </label>
+
+    <label class="field">
+      <span>模型</span>
+      <select name="model"></select>
+    </label>
+
+    <label class="field">
+      <span>工作目录</span>
+      <span class="input-group">
+        <input name="cwd" type="text" placeholder="/absolute/path" required>
+        <button type="button" class="btn btn-ghost" data-browse="cwd">浏览…</button>
+      </span>
+      <span class="hint">qodercli 会在这个目录里读写文件、执行命令。</span>
+    </label>
+
+    <label class="field">
+      <span>权限模式</span>
+      <select name="permissionMode"></select>
+      <span id="permissionHint" class="hint warn" data-hint="permission"></span>
+    </label>
+
+    <details class="field-details">
+      <summary>高级选项</summary>
+      <label class="field">
+        <span>Agent</span>
+        <input name="agent" type="text" placeholder="留空使用默认">
+      </label>
+      <label class="field">
+        <span>追加系统提示词</span>
+        <textarea name="appendSystemPrompt" rows="3" placeholder="附加到默认 system prompt 之后"></textarea>
+      </label>
+      <label class="field">
+        <span>额外目录（每行一个）</span>
+        <textarea name="addDirs" rows="2" placeholder="/path/to/other"></textarea>
+      </label>
+      <label class="field">
+        <span>额外 CLI 参数（每行一个）</span>
+        <textarea name="extraArgs" rows="2" placeholder="--max-output-tokens&#10;8192"></textarea>
+      </label>
+    </details>
+
+    <div class="modal-actions">
+      <button type="button" class="btn btn-ghost" data-close="newSessionModal">取消</button>
+      <button type="submit" class="btn btn-primary">创建并开始</button>
+    </div>
+    <div id="newSessionError" class="error-text hidden"></div>
+  </form>
+</div>
+
+<!-- ─────────────────────────── settings dialog ─────────────────────────── -->
+<div id="settingsModal" class="modal hidden">
+  <form id="settingsForm" class="modal-card">
+    <h2>默认设置</h2>
+    <p class="muted small">保存到本机 <code>config.json</code>，作为之后新建会话的默认值。</p>
+
+    <label class="field">
+      <span>默认后端</span>
+      <select name="provider"></select>
+      <span class="hint" data-hint="provider"></span>
+    </label>
+
+    <label class="field">
+      <span>默认模型</span>
+      <select name="model"></select>
+    </label>
+
+    <label class="field">
+      <span>默认工作目录</span>
+      <span class="input-group">
+        <input name="cwd" type="text" required>
+        <button type="button" class="btn btn-ghost" data-browse="cwd">浏览…</button>
+      </span>
+    </label>
+
+    <label class="field">
+      <span>默认权限模式</span>
+      <select name="permissionMode"></select>
+      <span class="hint" data-hint="permission"></span>
+    </label>
+
+    <label class="field">
+      <span>访问口令</span>
+      <input name="token" type="text" placeholder="留空则不修改">
+      <span class="hint">修改后当前页面仍然可用，其他人需要用新口令重新进入。</span>
+    </label>
+
+    <label class="field">
+      <span>最大并发会话数</span>
+      <input name="maxSessions" type="number" min="1" max="64">
+    </label>
+
+    <label class="field">
+      <span>qodercli 路径</span>
+      <input name="qodercliPath" type="text">
+    </label>
+
+    <label class="field">
+      <span>codex 路径</span>
+      <input name="codexPath" type="text">
+    </label>
+
+    <label class="field">
+      <span>共享工作区</span>
+      <span class="input-group">
+        <input name="sharedWorkspace" type="text">
+        <button type="button" class="btn btn-ghost" data-browse="sharedWorkspace">浏览…</button>
+      </span>
+      <span class="hint">新建会话的默认工作目录，也是两个 CLI 的临时文件目录（<code>.tmp/</code>）。保存后立即对新建的会话生效。</span>
+    </label>
+
+    <div id="serverInfo" class="server-info"></div>
+
+    <div class="modal-actions">
+      <button type="button" class="btn btn-ghost" data-close="settingsModal">取消</button>
+      <button type="submit" class="btn btn-primary">保存</button>
+    </div>
+    <div id="settingsError" class="error-text hidden"></div>
+    <div id="settingsOk" class="ok-text hidden"></div>
+  </form>
+</div>
+
+<!-- ─────────────────────────── dir picker ─────────────────────────── -->
+<div id="dirModal" class="modal hidden">
+  <div class="modal-card">
+    <h2>选择目录</h2>
+    <div class="dir-path">
+      <button type="button" id="dirUp" class="btn btn-ghost btn-sm" title="上级目录">↑</button>
+      <input id="dirCurrent" type="text">
+      <button type="button" id="dirGo" class="btn btn-ghost btn-sm">前往</button>
+    </div>
+    <ul id="dirList" class="dir-list"></ul>
+    <div class="modal-actions">
+      <button type="button" class="btn btn-ghost" data-close="dirModal">取消</button>
+      <button type="button" id="dirChoose" class="btn btn-primary">使用此目录</button>
+    </div>
+    <div id="dirError" class="error-text hidden"></div>
+  </div>
+</div>
+
+<!-- ─────────────────────────── logs drawer ─────────────────────────── -->
+<div id="logsModal" class="modal hidden">
+  <div class="modal-card wide">
+    <h2>qodercli 进程日志</h2>
+    <pre id="logsBody" class="logs-body"></pre>
+    <div class="modal-actions">
+      <button type="button" class="btn btn-ghost" data-close="logsModal">关闭</button>
+    </div>
+  </div>
+</div>
+
+<script src="./app.js" type="module"></script>
+</body>
+</html>

@@ -1,0 +1,23 @@
+{
+  "name": "agent-session-proxy",
+  "version": "0.2.0",
+  "private": true,
+  "type": "module",
+  "description": "Share the coding agent CLIs on your machine (qodercli, codex) as a multi-turn chat web page on your LAN",
+  "license": "MIT",
+  "author": "Dian Chen <okcd00@qq.com>",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/okcd00/agent-session-proxy.git"
+  },
+  "bin": {
+    "agent-session-proxy": "./server.js"
+  },
+  "scripts": {
+    "start": "node server.js",
+    "test": "node test/renderer.test.mjs && node test/presence.test.mjs && node test/start.test.mjs && node test/admin.test.mjs"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
